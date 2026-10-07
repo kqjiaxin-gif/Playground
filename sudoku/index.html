@@ -1,0 +1,828 @@
+<title>Gridline Sudoku</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: quiet graph-paper sheet; board on the left, a slim control column on the right; stacks on phones. */
+:root {
+  --paper: #f4f6f8;
+  --sheet: #fbfcfd;
+  --rule: #e3e8ee;
+  --rule-faint: #edf1f5;
+  --line: #d5dde6;
+  --box: #8e9cad;
+  --ink: #2c3744;
+  --ink-soft: #66758a;
+  --pen: #5a6fb8;
+  --wash: #e6ebf8;
+  --wash-strong: #d3ddf5;
+  --peer: #eef2f7;
+  --error: #c96a5c;
+  --error-wash: #f9e7e3;
+  --good: #5f9a80;
+  --font-ui: "Lexend", "Segoe UI", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #171c23; --sheet: #1d232b; --rule: #262e38; --rule-faint: #1f262f;
+    --line: #2f3946; --box: #6a7a8e; --ink: #dfe5ec; --ink-soft: #95a3b5;
+    --pen: #9fb2f2; --wash: #26304a; --wash-strong: #31406a; --peer: #222a35;
+    --error: #ee9a8c; --error-wash: #3a2629; --good: #86c2a6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #171c23; --sheet: #1d232b; --rule: #262e38; --rule-faint: #1f262f;
+  --line: #2f3946; --box: #6a7a8e; --ink: #dfe5ec; --ink-soft: #95a3b5;
+  --pen: #9fb2f2; --wash: #26304a; --wash-strong: #31406a; --peer: #222a35;
+  --error: #ee9a8c; --error-wash: #3a2629; --good: #86c2a6;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--rule-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule-faint) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding-inline: 16px;
+  padding-block: 20px 40px;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--pen); outline-offset: 2px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+.wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+/* Header */
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+.brand span { font-size: 12px; color: var(--ink-soft); letter-spacing: 0.06em; text-transform: uppercase; }
+.seg { display: inline-flex; background: var(--sheet); border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button {
+  border: 0; background: transparent; padding: 6px 14px; border-radius: 999px;
+  font-size: 13px; color: var(--ink-soft); transition: background .15s, color .15s;
+}
+.seg button[aria-pressed="true"] { background: var(--wash); color: var(--ink); font-weight: 500; }
+.seg button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+
+/* Play screen */
+.play { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 28px; align-items: start; }
+.board-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.board-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--ink-soft); }
+.board-meta strong { color: var(--ink); font-weight: 500; }
+
+.board-frame { position: relative; width: 100%; max-width: 560px; aspect-ratio: 1; }
+.board {
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(9, 1fr);
+  background: var(--sheet);
+  border: 2px solid var(--box); border-radius: 6px; overflow: hidden;
+  box-shadow: 0 1px 0 var(--rule), 0 10px 30px -18px rgba(40, 60, 90, .35);
+}
+.cell {
+  border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: transparent; padding: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-num); font-size: clamp(16px, 4.6vw, 26px); font-weight: 500;
+  color: var(--pen); transition: background .12s;
+  min-width: 0; min-height: 0;
+}
+.cell.c8 { border-right: 0; }
+.cell.r8 { border-bottom: 0; }
+.cell.c2, .cell.c5 { border-right: 2px solid var(--box); }
+.cell.r2, .cell.r5 { border-bottom: 2px solid var(--box); }
+.cell.given { color: var(--ink); font-weight: 400; }
+.cell.hinted { color: var(--good); }
+.cell.peer { background: var(--peer); }
+.cell.same { background: var(--wash); }
+.cell.sel { background: var(--wash-strong); }
+.cell.wrong { color: var(--error); background: var(--error-wash); }
+.cell.sel.wrong { box-shadow: inset 0 0 0 2px var(--error); }
+.cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--pen); }
+.board.solved .cell { color: var(--ink); }
+.board.solved .cell.hinted { color: var(--good); }
+
+.veil {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; justify-content: center; text-align: center;
+  background: color-mix(in srgb, var(--sheet) 94%, transparent);
+  border: 2px solid var(--box); border-radius: 6px; padding: 24px;
+}
+.veil p { margin: 0; color: var(--ink-soft); }
+
+/* Side column */
+.side { display: flex; flex-direction: column; gap: 18px; }
+.panel { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+
+.clock { font-family: var(--font-num); font-size: 34px; font-weight: 400; letter-spacing: -0.02em; line-height: 1; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-family: var(--font-num); font-weight: 500; font-size: 15px; }
+.stat small { font-size: 11px; color: var(--ink-soft); }
+
+.diffs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 7px 8px;
+  font-size: 13px; color: var(--ink-soft);
+}
+.chip[aria-pressed="true"] { border-color: var(--pen); color: var(--ink); background: var(--wash); }
+.btn {
+  border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 9px 12px;
+  font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover { border-color: var(--box); }
+.btn.primary { background: var(--pen); border-color: var(--pen); color: var(--sheet); font-weight: 500; }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.key {
+  position: relative; border: 1px solid var(--line); background: var(--sheet); border-radius: 8px;
+  aspect-ratio: 1.25; font-family: var(--font-num); font-size: 22px; color: var(--pen);
+}
+.key:hover:not(:disabled) { background: var(--wash); }
+.key small { position: absolute; right: 6px; bottom: 3px; font-size: 10px; color: var(--ink-soft); }
+.key:disabled { opacity: .35; cursor: default; }
+
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tool {
+  border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 8px 4px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--ink-soft);
+}
+.tool svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tool:hover:not(:disabled) { background: var(--wash); }
+.tool:disabled { opacity: .4; cursor: default; }
+
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.toggle small { display: block; color: var(--ink-soft); font-size: 11px; }
+.switch { position: relative; width: 38px; height: 22px; flex: none; border-radius: 999px; border: 0; background: var(--line); padding: 0; transition: background .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--sheet); transition: transform .15s; }
+.switch[aria-checked="true"] { background: var(--pen); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); }
+
+.keys-hint { font-size: 11px; color: var(--ink-soft); line-height: 1.6; }
+.keys-hint kbd { font-family: var(--font-num); font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--sheet); }
+
+/* Finish card */
+.finish { display: flex; flex-direction: column; gap: 14px; }
+.finish h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.sum { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+.sum dt { color: var(--ink-soft); }
+.sum dd { margin: 0; font-family: var(--font-num); text-align: right; }
+.sum .total { border-top: 1px solid var(--line); padding-top: 6px; color: var(--ink); font-weight: 500; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 12px; color: var(--ink-soft); }
+.field input {
+  font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 11px; width: 100%;
+}
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row .btn { flex: 1; }
+.note { font-size: 12px; color: var(--ink-soft); margin: 0; }
+.note.err { color: var(--error); }
+
+/* Leaderboard */
+.board-screen { display: flex; flex-direction: column; gap: 16px; max-width: 720px; width: 100%; }
+.lb-head { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; }
+.lb-head h2 { margin: 0; font-size: 20px; font-weight: 500; text-wrap: balance; }
+.lb-head p { margin: 2px 0 0; font-size: 13px; color: var(--ink-soft); max-width: 60ch; }
+.table-wrap { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 10px 14px; text-align: left; white-space: nowrap; }
+th { font-size: 11px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--line); }
+td { border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+td.rank { color: var(--ink-soft); font-family: var(--font-num); width: 1%; }
+td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+td.time { font-weight: 500; color: var(--ink); }
+tr.mine td { background: var(--wash); }
+tr.top td.rank { color: var(--pen); font-weight: 500; }
+.empty { padding: 34px 20px; text-align: center; color: var(--ink-soft); font-size: 14px; }
+.empty b { display: block; color: var(--ink); font-weight: 500; margin-bottom: 4px; }
+
+/* Confirm dialog */
+.scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--paper) 70%, transparent); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.dialog { background: var(--sheet); border: 1px solid var(--line); border-radius: 12px; padding: 20px; max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 40px -20px rgba(30, 45, 70, .4); }
+.dialog h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.dialog p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+
+@media (max-width: 760px) {
+  .play { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .board-frame { max-width: none; }
+  .side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .pad { grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .key { aspect-ratio: auto; height: 50px; font-size: 20px; }
+  .key small { right: 3px; bottom: 1px; font-size: 9px; }
+  .keys-hint { display: none; }
+  .clock { font-size: 28px; }
+  .status-panel { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .status-panel .stats { flex: 1; min-width: 180px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand"><h1>Gridline Sudoku</h1><span>9×9 · classic</span></div>
+    <nav class="seg" aria-label="Screens">
+      <button id="nav-play" aria-pressed="true">Play</button>
+      <button id="nav-board" aria-pressed="false">Leaderboard</button>
+    </nav>
+  </header>
+
+  <main id="screen-play" class="play">
+    <section class="board-col">
+      <div class="board-meta">
+        <span><strong id="meta-diff">Medium</strong> · <span id="meta-givens">0</span> givens</span>
+        <span id="meta-filled">0 of 81 filled</span>
+      </div>
+      <div class="board-frame">
+        <div id="board" class="board" role="grid" aria-label="Sudoku board"></div>
+        <div id="veil-paused" class="veil" hidden>
+          <p>Paused. The board is hidden while the clock is stopped.</p>
+          <button class="btn primary" id="btn-resume">Resume</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="panel status-panel" id="panel-status">
+        <div>
+          <div class="label">Time</div>
+          <div class="clock" id="clock">0:00</div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="st-mistakes">0</b><small>mistakes</small></div>
+          <div class="stat"><b id="st-hints">0</b><small>hints</small></div>
+          <div class="stat"><b id="st-penalty">+0s</b><small>penalty</small></div>
+        </div>
+      </div>
+
+      <div class="panel finish" id="panel-finish" hidden>
+        <h2>Solved</h2>
+        <dl class="sum">
+          <dt>Clock time</dt><dd id="f-raw">0:00</dd>
+          <dt id="f-mistakes-l">Mistakes × 10s</dt><dd id="f-mistakes">+0s</dd>
+          <dt id="f-hints-l">Hints × 30s</dt><dd id="f-hints">+0s</dd>
+          <dt class="total">Leaderboard time</dt><dd class="total" id="f-total">0:00</dd>
+        </dl>
+        <form id="form-submit" class="finish" novalidate>
+          <div class="field">
+            <label for="nick">Nickname</label>
+            <input id="nick" maxlength="20" autocomplete="nickname" placeholder="e.g. Pencil Pusher">
+          </div>
+          <button class="btn primary" type="submit" id="btn-submit">Post to leaderboard</button>
+        </form>
+        <p class="note" id="submit-note" hidden></p>
+        <div class="row">
+          <button class="btn" id="btn-again">New puzzle</button>
+          <button class="btn" id="btn-see-board">Leaderboard</button>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-pad">
+        <div class="pad" id="pad"></div>
+        <div class="tools">
+          <button class="tool" id="t-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+          <button class="tool" id="t-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>Redo</button>
+          <button class="tool" id="t-erase" title="Erase (Backspace)"><svg viewBox="0 0 24 24"><path d="M20 20H8l-5-5 10-10 8 8-6 7"/><path d="m6 12 6 6"/></svg>Erase</button>
+          <button class="tool" id="t-hint" title="Hint (+30s)"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/></svg>Hint</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toggle">
+          <div>Mistake check<small>Flags wrong numbers. +10s each.</small></div>
+          <button class="switch" id="sw-check" role="switch" aria-checked="true" aria-label="Mistake check"></button>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:8px">New puzzle</div>
+          <div class="diffs" id="diffs"></div>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-pause">Pause</button>
+          <button class="btn primary" id="btn-new">New game</button>
+        </div>
+        <div class="keys-hint"><kbd>1</kbd>–<kbd>9</kbd> enter · <kbd>←↑→↓</kbd> move · <kbd>⌫</kbd> erase · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>Z</kbd> redo</div>
+      </div>
+    </aside>
+  </main>
+
+  <main id="screen-board" class="board-screen" hidden>
+    <div class="lb-head">
+      <div>
+        <h2>Fastest solves</h2>
+        <p>Top 20 per difficulty. Leaderboard time is the clock time plus 10s per flagged mistake and 30s per hint.</p>
+      </div>
+      <nav class="seg" id="lb-tabs" aria-label="Difficulty"></nav>
+    </div>
+    <div class="table-wrap" id="lb-body"></div>
+    <div><button class="btn" id="btn-back">Back to puzzle</button></div>
+  </main>
+</div>
+
+<div class="scrim" id="confirm" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h3 id="confirm-title">Start a new puzzle?</h3>
+    <p id="confirm-text">Your current progress will be lost.</p>
+    <div class="row">
+      <button class="btn" id="confirm-no">Keep playing</button>
+      <button class="btn primary" id="confirm-yes">Start new</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- constants ----------
+  const DIFFS = [
+    { id: "easy", name: "Easy", clues: 38 },
+    { id: "medium", name: "Medium", clues: 32 },
+    { id: "hard", name: "Hard", clues: 28 },
+    { id: "expert", name: "Expert", clues: 24 },
+  ];
+  const DIFF = Object.fromEntries(DIFFS.map(d => [d.id, d]));
+  const HINT_PENALTY = 30, MISTAKE_PENALTY = 10;
+  const R = [], C = [], B = [];
+  for (let i = 0; i < 81; i++) { R[i] = (i / 9) | 0; C[i] = i % 9; B[i] = ((R[i] / 3) | 0) * 3 + ((C[i] / 3) | 0); }
+  const LS = { game: "gs.game", nick: "gs.nick", check: "gs.check", mine: "gs.mine", diff: "gs.diff" };
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+
+  // ---------- generator ----------
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function popcount(m) { let n = 0; while (m) { m &= m - 1; n++; } return n; }
+
+  // Counts solutions up to `limit`. With limit 1 the grid is left holding the first solution found.
+  function solve(g, limit, random) {
+    const rows = new Array(9).fill(0), cols = new Array(9).fill(0), boxes = new Array(9).fill(0);
+    for (let i = 0; i < 81; i++) if (g[i]) { const b = 1 << g[i]; rows[R[i]] |= b; cols[C[i]] |= b; boxes[B[i]] |= b; }
+    let count = 0;
+    (function rec() {
+      let best = -1, bestMask = 0, bestN = 10;
+      for (let i = 0; i < 81; i++) {
+        if (g[i]) continue;
+        const m = ~(rows[R[i]] | cols[C[i]] | boxes[B[i]]) & 0x3fe;
+        const n = popcount(m);
+        if (n < bestN) { best = i; bestMask = m; bestN = n; if (n <= 1) break; }
+      }
+      if (best < 0) { count++; return count >= limit; }
+      if (bestN === 0) return false;
+      const ds = [];
+      for (let d = 1; d <= 9; d++) if (bestMask & (1 << d)) ds.push(d);
+      if (random) shuffle(ds);
+      for (const d of ds) {
+        const b = 1 << d;
+        g[best] = d; rows[R[best]] |= b; cols[C[best]] |= b; boxes[B[best]] |= b;
+        if (rec()) return true;
+        g[best] = 0; rows[R[best]] &= ~b; cols[C[best]] &= ~b; boxes[B[best]] &= ~b;
+      }
+      return false;
+    })();
+    return count;
+  }
+
+  function generate(diffId) {
+    const solution = new Array(81).fill(0);
+    solve(solution, 1, true);
+    const puzzle = solution.slice();
+    let clues = 81;
+    // Remove cells in rotationally symmetric pairs while the solution stays unique.
+    const order = shuffle([...Array(41).keys()]);
+    for (const i of order) {
+      if (clues <= DIFF[diffId].clues) break;
+      const j = 80 - i;
+      const a = puzzle[i], b = puzzle[j];
+      puzzle[i] = 0; puzzle[j] = 0;
+      if (solve(puzzle.slice(), 2, false) === 1) clues -= i === j ? 1 : 2;
+      else { puzzle[i] = a; puzzle[j] = b; }
+    }
+    // Symmetric removal stalls around 28 givens; finish sparser puzzles one cell at a time.
+    for (const i of shuffle([...Array(81).keys()])) {
+      if (clues <= DIFF[diffId].clues) break;
+      if (!puzzle[i]) continue;
+      const a = puzzle[i];
+      puzzle[i] = 0;
+      if (solve(puzzle.slice(), 2, false) === 1) clues--;
+      else puzzle[i] = a;
+    }
+    return { puzzle, solution };
+  }
+
+  // ---------- state ----------
+  let S = null;
+  let check = store.get(LS.check) !== "0";
+  let pickedDiff = DIFF[store.get(LS.diff)] ? store.get(LS.diff) : "medium";
+  let screen = "play";
+  let lbTab = pickedDiff;
+
+  function newGame(diffId) {
+    const { puzzle, solution } = generate(diffId);
+    S = {
+      diff: diffId, puzzle, solution,
+      values: puzzle.slice(),
+      locked: puzzle.map(v => !!v),
+      hinted: new Array(81).fill(false),
+      counted: [],
+      elapsed: 0, running: true, paused: false,
+      mistakes: 0, hints: 0,
+      undo: [], redo: [],
+      done: false, submittedId: null,
+      sel: puzzle.indexOf(0),
+    };
+    startClock();
+    persist();
+    render();
+  }
+
+  function rawMs() { return S.elapsed + (S.running && S.since ? performance.now() - S.since : 0); }
+  function startClock() { S.running = true; S.paused = false; S.since = performance.now(); }
+  function stopClock() { if (S.running) { S.elapsed = rawMs(); S.running = false; S.since = 0; } }
+  function rawSec() { return Math.floor(rawMs() / 1000); }
+  function penalty() { return S.mistakes * MISTAKE_PENALTY + S.hints * HINT_PENALTY; }
+  function fmt(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function serialize() {
+    if (!S) return null;
+    const { since, ...rest } = S;
+    return { ...rest, elapsed: rawMs(), running: false };
+  }
+  function persist() { const d = serialize(); if (d) store.set(LS.game, JSON.stringify(d)); }
+  function restore(d) {
+    if (!d || !Array.isArray(d.values) || d.values.length !== 81 || !DIFF[d.diff]) return false;
+    S = { ...d, since: 0, running: false };
+    if (!S.done) { S.paused = !!d.paused; if (!S.paused) startClock(); }
+    return true;
+  }
+
+  // ---------- game actions ----------
+  function audit() {
+    // Each wrong number counts once while the check is on (including ones already on the board when it is switched on).
+    if (!check || S.done) return;
+    for (let i = 0; i < 81; i++) {
+      const v = S.values[i];
+      if (!v || S.locked[i] || v === S.solution[i]) continue;
+      const key = i * 10 + v;
+      if (!S.counted.includes(key)) { S.counted.push(key); S.mistakes++; }
+    }
+  }
+
+  function canEdit(i) { return S && !S.done && !S.paused && i >= 0 && !S.locked[i]; }
+
+  function setCell(i, v) {
+    if (!canEdit(i)) return;
+    const prev = S.values[i];
+    if (prev === v) return;
+    S.undo.push({ i, prev, next: v }); S.redo = [];
+    S.values[i] = v;
+    afterChange();
+  }
+
+  function step(from, to) {
+    while (from.length) {
+      const e = from.pop();
+      if (S.locked[e.i]) continue;
+      S.values[e.i] = to === S.redo ? e.prev : e.next;
+      to.push(e); S.sel = e.i;
+      afterChange();
+      return;
+    }
+  }
+  function undo() { if (S && !S.done && !S.paused) step(S.undo, S.redo); }
+  function redo() { if (S && !S.done && !S.paused) step(S.redo, S.undo); }
+
+  function hint() {
+    if (!S || S.done || S.paused) return;
+    let i = S.sel;
+    if (i < 0 || S.locked[i] || S.values[i] === S.solution[i]) {
+      const open = [];
+      for (let k = 0; k < 81; k++) if (!S.locked[k] && S.values[k] !== S.solution[k]) open.push(k);
+      if (!open.length) return;
+      i = open[(Math.random() * open.length) | 0];
+    }
+    S.values[i] = S.solution[i]; S.locked[i] = true; S.hinted[i] = true; S.hints++; S.sel = i;
+    afterChange();
+  }
+
+  function afterChange() {
+    audit();
+    if (S.values.every((v, i) => v === S.solution[i])) { stopClock(); S.done = true; S.sel = -1; }
+    persist(); render();
+  }
+
+  function move(dr, dc) {
+    let i = S.sel < 0 ? 40 : S.sel;
+    const r = (R[i] + dr + 9) % 9, c = (C[i] + dc + 9) % 9;
+    S.sel = r * 9 + c; render();
+  }
+
+  function pause(on) {
+    if (!S || S.done) return;
+    if (on && !S.paused) { stopClock(); S.paused = true; }
+    else if (!on && S.paused) { startClock(); }
+    persist(); render();
+  }
+
+  // ---------- rendering ----------
+  const $ = id => document.getElementById(id);
+  const boardEl = $("board"), padEl = $("pad");
+  const cells = [];
+  for (let i = 0; i < 81; i++) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `cell r${R[i]} c${C[i]}`;
+    b.setAttribute("role", "gridcell");
+    b.addEventListener("click", () => { if (S && !S.done) { S.sel = i; render(); } });
+    boardEl.appendChild(b); cells.push(b);
+  }
+  const keys = [];
+  for (let d = 1; d <= 9; d++) {
+    const k = document.createElement("button");
+    k.type = "button"; k.className = "key";
+    k.innerHTML = `${d}<small></small>`;
+    k.setAttribute("aria-label", `Enter ${d}`);
+    k.addEventListener("click", () => setCell(S.sel, d));
+    padEl.appendChild(k); keys.push(k);
+  }
+  for (const d of DIFFS) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = d.name; b.dataset.diff = d.id;
+    b.addEventListener("click", () => { pickedDiff = d.id; store.set(LS.diff, d.id); render(); });
+    $("diffs").appendChild(b);
+    const t = document.createElement("button");
+    t.textContent = d.name; t.dataset.diff = d.id;
+    t.addEventListener("click", () => { lbTab = d.id; renderBoard(); });
+    $("lb-tabs").appendChild(t);
+  }
+
+  function render() {
+    if (!S) return;
+    const sel = S.sel, sv = sel >= 0 ? S.values[sel] : 0;
+    const counts = new Array(10).fill(0);
+    let filled = 0;
+    for (let i = 0; i < 81; i++) {
+      const v = S.values[i], el = cells[i];
+      if (v) { counts[v]++; filled++; }
+      const wrong = check && v && !S.locked[i] && v !== S.solution[i];
+      const peer = sel >= 0 && i !== sel && (R[i] === R[sel] || C[i] === C[sel] || B[i] === B[sel]);
+      el.className = `cell r${R[i]} c${C[i]}`
+        + (S.locked[i] && !S.hinted[i] ? " given" : "")
+        + (S.hinted[i] ? " hinted" : "")
+        + (peer ? " peer" : "")
+        + (sv && v === sv && i !== sel ? " same" : "")
+        + (i === sel ? " sel" : "")
+        + (wrong ? " wrong" : "");
+      el.textContent = S.paused ? "" : (v || "");
+      el.setAttribute("aria-label", `Row ${R[i] + 1}, column ${C[i] + 1}, ${v ? v : "empty"}${S.locked[i] && !S.hinted[i] ? ", given" : ""}${wrong ? ", wrong" : ""}`);
+      el.tabIndex = i === (sel >= 0 ? sel : 0) ? 0 : -1;
+    }
+    boardEl.classList.toggle("solved", S.done);
+    keys.forEach((k, idx) => {
+      const left = 9 - counts[idx + 1];
+      k.querySelector("small").textContent = left > 0 ? left : "";
+      k.disabled = S.done || S.paused || left <= 0;
+    });
+    const givens = S.puzzle.filter(Boolean).length;
+    $("meta-diff").textContent = DIFF[S.diff].name;
+    $("meta-givens").textContent = givens;
+    $("meta-filled").textContent = S.done ? "Solved" : `${filled} of 81 filled`;
+    $("st-mistakes").textContent = S.mistakes;
+    $("st-hints").textContent = S.hints;
+    $("st-penalty").textContent = `+${penalty()}s`;
+    $("t-undo").disabled = S.done || S.paused || !S.undo.length;
+    $("t-redo").disabled = S.done || S.paused || !S.redo.length;
+    $("t-erase").disabled = !canEdit(sel) || !S.values[sel];
+    $("t-hint").disabled = S.done || S.paused;
+    $("sw-check").setAttribute("aria-checked", String(check));
+    $("btn-pause").textContent = S.paused ? "Resume" : "Pause";
+    $("btn-pause").disabled = S.done;
+    $("veil-paused").hidden = !S.paused;
+    document.querySelectorAll("#diffs .chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.diff === pickedDiff)));
+    $("btn-new").setAttribute("aria-label", `New ${DIFF[pickedDiff].name.toLowerCase()} game`);
+    $("panel-pad").hidden = S.done;
+    $("panel-finish").hidden = !S.done;
+    if (S.done) renderFinish();
+    tick();
+  }
+
+  function tick() {
+    if (!S) return;
+    $("clock").textContent = fmt(rawSec());
+  }
+
+  function renderFinish() {
+    const raw = Math.floor(S.elapsed / 1000);
+    $("f-raw").textContent = fmt(raw);
+    $("f-mistakes-l").textContent = `Mistakes (${S.mistakes}) × ${MISTAKE_PENALTY}s`;
+    $("f-mistakes").textContent = `+${S.mistakes * MISTAKE_PENALTY}s`;
+    $("f-hints-l").textContent = `Hints (${S.hints}) × ${HINT_PENALTY}s`;
+    $("f-hints").textContent = `+${S.hints * HINT_PENALTY}s`;
+    $("f-total").textContent = fmt(raw + penalty());
+    const form = $("form-submit"), note = $("submit-note");
+    if (S.submittedId) {
+      form.hidden = true; note.hidden = false; note.classList.remove("err");
+      note.textContent = "Posted. Your row is highlighted on the leaderboard.";
+    } else if (db === null && dbChecked) {
+      form.hidden = true; note.hidden = false; note.classList.remove("err");
+      note.textContent = "The leaderboard isn't available here. Open this page signed in to claude.ai to post your time.";
+    } else if (canWrite === false) {
+      form.hidden = true; note.hidden = false; note.classList.remove("err");
+      note.textContent = "You can view the leaderboard, but posting needs Contributor access to this page. Ask the owner to change your access.";
+    } else {
+      form.hidden = false;
+      if (!note.classList.contains("err")) note.hidden = true;
+    }
+  }
+
+  function showScreen(name) {
+    screen = name;
+    $("screen-play").hidden = name !== "play";
+    $("screen-board").hidden = name !== "board";
+    $("nav-play").setAttribute("aria-pressed", String(name === "play"));
+    $("nav-board").setAttribute("aria-pressed", String(name === "board"));
+    if (name === "board") renderBoard();
+  }
+
+  // ---------- leaderboard ----------
+  let db, dbChecked = false, canWrite = null;
+  const scores = { easy: null, medium: null, hard: null, expert: null };
+  const mine = new Set((() => { try { return JSON.parse(store.get(LS.mine) || "[]"); } catch { return []; } })());
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  function renderBoard() {
+    document.querySelectorAll("#lb-tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.diff === lbTab)));
+    const body = $("lb-body");
+    const name = DIFF[lbTab].name;
+    if (db === null && dbChecked) {
+      body.innerHTML = `<div class="empty"><b>Leaderboard unavailable</b>Open this page signed in to claude.ai to see and post times.</div>`;
+      return;
+    }
+    const rows = scores[lbTab];
+    if (!rows) { body.innerHTML = `<div class="empty">Loading ${name.toLowerCase()} times…</div>`; return; }
+    if (!rows.length) {
+      body.innerHTML = `<div class="empty"><b>No ${name.toLowerCase()} times yet</b>Solve a ${name.toLowerCase()} puzzle and post your nickname to take first place.</div>`;
+      return;
+    }
+    body.innerHTML = `<table>
+      <thead><tr><th>#</th><th>Player</th><th class="n">Time</th><th class="n">Clock</th><th class="n">Mistakes</th><th class="n">Hints</th><th>Date</th></tr></thead>
+      <tbody>${rows.map((r, k) => `<tr class="${mine.has(r.id) ? "mine" : ""} ${k < 3 ? "top" : ""}">
+        <td class="rank">${k + 1}</td>
+        <td class="name">${esc(r.name)}</td>
+        <td class="n time">${fmt(r.time)}</td>
+        <td class="n">${fmt(r.raw)}</td>
+        <td class="n">${r.mistakes}</td>
+        <td class="n">${r.hints}</td>
+        <td>${new Date(r.at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</td>
+      </tr>`).join("")}</tbody></table>`;
+  }
+
+  async function connectDb() {
+    const c = window.claude;
+    db = c && c.use ? await c.use("db").catch(() => null) : null;
+    dbChecked = true;
+    if (db) {
+      for (const d of DIFFS) {
+        db.collection("scores").where("difficulty", "==", d.id).orderBy("time", "asc").limit(20).onSnapshot(
+          snap => {
+            scores[d.id] = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+              .filter(r => typeof r.time === "number" && typeof r.name === "string")
+              .sort((a, b) => a.time - b.time || a.at - b.at);
+            if (screen === "board" && lbTab === d.id) renderBoard();
+          },
+          () => { scores[d.id] = scores[d.id] || []; if (screen === "board") renderBoard(); }
+        );
+      }
+      const user = await c.use("user").catch(() => null);
+      if (user) { try { canWrite = await user.can("data.write"); } catch { canWrite = null; } }
+    }
+    render(); if (screen === "board") renderBoard();
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    const note = $("submit-note"), btn = $("btn-submit");
+    const name = $("nick").value.trim().replace(/\s+/g, " ");
+    note.classList.add("err");
+    if (!name) { note.hidden = false; note.textContent = "Type a nickname to post your time."; return; }
+    if (!db) { note.hidden = false; note.textContent = "The leaderboard is still connecting. Try again in a moment."; return; }
+    store.set(LS.nick, name);
+    btn.disabled = true; btn.textContent = "Posting…";
+    const raw = Math.floor(S.elapsed / 1000);
+    const entry = {
+      name, difficulty: S.diff, time: raw + penalty(), raw,
+      mistakes: S.mistakes, hints: S.hints, givens: S.puzzle.filter(Boolean).length, at: Date.now(),
+    };
+    try {
+      const ref = db.collection("scores").doc();
+      await ref.set(entry);
+      S.submittedId = ref.id; mine.add(ref.id);
+      store.set(LS.mine, JSON.stringify([...mine].slice(-200)));
+      note.classList.remove("err");
+      persist(); render();
+      lbTab = S.diff; showScreen("board");
+    } catch (err) {
+      note.hidden = false;
+      note.textContent = err && err.code === "invalid_argument"
+        ? "Your access to this page doesn't allow posting. Ask the owner for Contributor access."
+        : err && err.code === "quota_exceeded"
+          ? "The leaderboard is full. Ask the owner to clear old entries."
+          : "Couldn't post your time. Check your connection and try again.";
+    } finally {
+      btn.disabled = false; btn.textContent = "Post to leaderboard";
+    }
+  }
+
+  // ---------- confirm ----------
+  function askNewGame() {
+    const progress = S && !S.done && S.values.some((v, i) => v && !S.puzzle[i]);
+    if (!progress) { newGame(pickedDiff); return; }
+    $("confirm-title").textContent = `Start a new ${DIFF[pickedDiff].name.toLowerCase()} puzzle?`;
+    $("confirm").hidden = false; $("confirm-yes").focus();
+  }
+  $("confirm-yes").addEventListener("click", () => { $("confirm").hidden = true; newGame(pickedDiff); });
+  $("confirm-no").addEventListener("click", () => { $("confirm").hidden = true; });
+
+  // ---------- wiring ----------
+  $("nav-play").addEventListener("click", () => showScreen("play"));
+  $("nav-board").addEventListener("click", () => { if (S) lbTab = S.done ? S.diff : lbTab; showScreen("board"); });
+  $("btn-back").addEventListener("click", () => showScreen("play"));
+  $("btn-see-board").addEventListener("click", () => { lbTab = S.diff; showScreen("board"); });
+  $("btn-again").addEventListener("click", () => newGame(pickedDiff));
+  $("btn-new").addEventListener("click", askNewGame);
+  $("btn-pause").addEventListener("click", () => pause(!S.paused));
+  $("btn-resume").addEventListener("click", () => pause(false));
+  $("t-undo").addEventListener("click", undo);
+  $("t-redo").addEventListener("click", redo);
+  $("t-erase").addEventListener("click", () => setCell(S.sel, 0));
+  $("t-hint").addEventListener("click", hint);
+  $("sw-check").addEventListener("click", () => {
+    check = !check; store.set(LS.check, check ? "1" : "0");
+    if (S) { audit(); persist(); }
+    render();
+  });
+  $("form-submit").addEventListener("submit", submit);
+  $("nick").value = store.get(LS.nick) || "";
+
+  document.addEventListener("keydown", e => {
+    if (!S || screen !== "play" || !$("confirm").hidden) return;
+    if (e.target instanceof HTMLInputElement) return;
+    const k = e.key, mod = e.ctrlKey || e.metaKey;
+    if (mod && (k === "z" || k === "Z")) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (mod && (k === "y" || k === "Y")) { e.preventDefault(); redo(); return; }
+    if (mod || e.altKey || S.done) return;
+    if (k === "ArrowUp") { e.preventDefault(); move(-1, 0); }
+    else if (k === "ArrowDown") { e.preventDefault(); move(1, 0); }
+    else if (k === "ArrowLeft") { e.preventDefault(); move(0, -1); }
+    else if (k === "ArrowRight") { e.preventDefault(); move(0, 1); }
+    else if (/^[1-9]$/.test(k)) setCell(S.sel, +k);
+    else if (k === "Backspace" || k === "Delete" || k === "0") setCell(S.sel, 0);
+    else return;
+    if (S.sel >= 0 && boardEl.contains(document.activeElement)) cells[S.sel].focus();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!S || S.done) return;
+    if (document.hidden && !S.paused) pause(true);
+  });
+  window.addEventListener("pagehide", persist);
+  setInterval(() => { if (S && S.running) tick(); }, 250);
+  setInterval(() => { if (S && S.running) persist(); }, 5000);
+
+  // ---------- boot ----------
+  function start(data) {
+    let ok = false;
+    if (data && data.game) ok = restore(data.game);
+    if (!ok) { try { ok = restore(JSON.parse(store.get(LS.game) || "null")); } catch { ok = false; } }
+    if (!ok) newGame(pickedDiff);
+    render();
+    connectDb();
+  }
+  window.claude?.hot?.snapshot?.(() => ({ game: serialize() }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
