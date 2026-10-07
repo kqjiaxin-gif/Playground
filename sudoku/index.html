@@ -158,7 +158,16 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .key small { position: absolute; right: 6px; bottom: 3px; font-size: 10px; color: var(--ink-soft); }
 .key:disabled { opacity: .35; cursor: default; }
 
-.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.tool[aria-pressed="true"] { background: var(--wash); border-color: var(--pen); color: var(--ink); }
+.tool .state { font-style: normal; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+.tool .state::after { content: "off"; }
+.tool[aria-pressed="true"] .state { color: var(--pen); }
+.tool[aria-pressed="true"] .state::after { content: "on"; }
+.pad.noting .key { font-size: 15px; color: var(--ink-soft); border-style: dashed; }
+.notes { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); width: 100%; height: 100%; padding: 2px; }
+.notes span { display: flex; align-items: center; justify-content: center; font-family: var(--font-num); font-size: clamp(8px, 1.6vw, 11px); font-weight: 400; color: var(--ink-soft); line-height: 1; }
+.notes span.hit { color: var(--pen); font-weight: 500; }
 .tool {
   border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 8px 4px 6px;
   display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--ink-soft);
@@ -301,6 +310,7 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
           <button class="tool" id="t-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
           <button class="tool" id="t-redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>Redo</button>
           <button class="tool" id="t-erase" title="Erase (Backspace)"><svg viewBox="0 0 24 24"><path d="M20 20H8l-5-5 10-10 8 8-6 7"/><path d="m6 12 6 6"/></svg>Erase</button>
+          <button class="tool" id="t-notes" title="Pencil notes (N)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>Notes<i class="state"></i></button>
           <button class="tool" id="t-hint" title="Hint (+30s)"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/></svg>Hint</button>
         </div>
       </div>
@@ -318,7 +328,7 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
           <button class="btn" id="btn-pause">Pause</button>
           <button class="btn primary" id="btn-new">New game</button>
         </div>
-        <div class="keys-hint"><kbd>1</kbd>–<kbd>9</kbd> enter · <kbd>←↑→↓</kbd> move · <kbd>⌫</kbd> erase · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>Z</kbd> redo</div>
+        <div class="keys-hint"><kbd>1</kbd>–<kbd>9</kbd> enter · <kbd>←↑→↓</kbd> move · <kbd>⌫</kbd> erase · <kbd>N</kbd> notes mode · <kbd>⇧</kbd>+<kbd>1</kbd>–<kbd>9</kbd> quick note · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>Z</kbd> redo</div>
       </div>
     </aside>
   </main>
@@ -443,6 +453,8 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
       values: puzzle.slice(),
       locked: puzzle.map(v => !!v),
       hinted: new Array(81).fill(false),
+      notes: new Array(81).fill(0),
+      noteMode: false,
       counted: [],
       elapsed: 0, running: true, paused: false,
       mistakes: 0, hints: 0,
@@ -475,6 +487,8 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
   function restore(d) {
     if (!d || !Array.isArray(d.values) || d.values.length !== 81 || !DIFF[d.diff]) return false;
     S = { ...d, since: 0, running: false };
+    // Games saved before pencil notes existed: add empty notes and drop their old-format undo history.
+    if (!Array.isArray(S.notes) || S.notes.length !== 81) { S.notes = new Array(81).fill(0); S.undo = []; S.redo = []; }
     if (!S.done) { S.paused = !!d.paused; if (!S.paused) startClock(); }
     return true;
   }
@@ -493,20 +507,55 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
 
   function canEdit(i) { return S && !S.done && !S.paused && i >= 0 && !S.locked[i]; }
 
-  function setCell(i, v) {
-    if (!canEdit(i)) return;
-    const prev = S.values[i];
-    if (prev === v) return;
-    S.undo.push({ i, prev, next: v }); S.redo = [];
-    S.values[i] = v;
+  function peersOf(i) {
+    const out = [];
+    for (let k = 0; k < 81; k++) if (k !== i && (R[k] === R[i] || C[k] === C[i] || B[k] === B[i])) out.push(k);
+    return out;
+  }
+
+  // Each undo entry is a list of cell changes: value and note mask, before (v0, n0) and after (v1, n1).
+  function commit(i, changes) {
+    if (!changes.length) return;
+    for (const c of changes) { S.values[c.i] = c.v1; S.notes[c.i] = c.n1; }
+    S.undo.push({ i, changes }); S.redo = [];
     afterChange();
   }
 
+  function setCell(i, v) {
+    if (!canEdit(i)) return;
+    if (S.values[i] === v) return;
+    const changes = [{ i, v0: S.values[i], v1: v, n0: S.notes[i], n1: S.notes[i] }];
+    if (v) {
+      // Placing a number clears that digit from the notes in its row, column and box.
+      const bit = 1 << v;
+      for (const k of peersOf(i)) if (S.notes[k] & bit) changes.push({ i: k, v0: S.values[k], v1: S.values[k], n0: S.notes[k], n1: S.notes[k] & ~bit });
+    }
+    commit(i, changes);
+  }
+
+  function toggleNote(i, d) {
+    if (!canEdit(i) || S.values[i]) return;
+    const n = S.notes[i];
+    commit(i, [{ i, v0: 0, v1: 0, n0: n, n1: n ^ (1 << d) }]);
+  }
+
+  function erase(i) {
+    if (!canEdit(i)) return;
+    if (S.values[i]) setCell(i, 0);
+    else if (S.notes[i]) commit(i, [{ i, v0: 0, v1: 0, n0: S.notes[i], n1: 0 }]);
+  }
+
+  function input(d) { if (S.noteMode) toggleNote(S.sel, d); else setCell(S.sel, d); }
+
   function step(from, to) {
+    const back = to === S.redo;
     while (from.length) {
       const e = from.pop();
       if (S.locked[e.i]) continue;
-      S.values[e.i] = to === S.redo ? e.prev : e.next;
+      for (const c of e.changes) {
+        if (!S.locked[c.i]) S.values[c.i] = back ? c.v0 : c.v1;
+        S.notes[c.i] = back ? c.n0 : c.n1;
+      }
       to.push(e); S.sel = e.i;
       afterChange();
       return;
@@ -525,6 +574,7 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
       i = open[(Math.random() * open.length) | 0];
     }
     S.values[i] = S.solution[i]; S.locked[i] = true; S.hinted[i] = true; S.hints++; S.sel = i;
+    for (const k of peersOf(i)) S.notes[k] &= ~(1 << S.solution[i]);
     afterChange();
   }
 
@@ -565,7 +615,7 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
     k.type = "button"; k.className = "key";
     k.innerHTML = `${d}<small></small>`;
     k.setAttribute("aria-label", `Enter ${d}`);
-    k.addEventListener("click", () => setCell(S.sel, d));
+    k.addEventListener("click", () => input(d));
     padEl.appendChild(k); keys.push(k);
   }
   for (const d of DIFFS) {
@@ -596,8 +646,15 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
         + (sv && v === sv && i !== sel ? " same" : "")
         + (i === sel ? " sel" : "")
         + (wrong ? " wrong" : "");
-      el.textContent = S.paused ? "" : (v || "");
-      el.setAttribute("aria-label", `Row ${R[i] + 1}, column ${C[i] + 1}, ${v ? v : "empty"}${S.locked[i] && !S.hinted[i] ? ", given" : ""}${wrong ? ", wrong" : ""}`);
+      const n = S.notes[i];
+      if (S.paused || (!v && !n)) el.textContent = "";
+      else if (v) el.textContent = v;
+      else {
+        let h = '<span class="notes">';
+        for (let d = 1; d <= 9; d++) h += `<span${sv === d ? ' class="hit"' : ""}>${n & (1 << d) ? d : ""}</span>`;
+        el.innerHTML = h + "</span>";
+      }
+      el.setAttribute("aria-label", `Row ${R[i] + 1}, column ${C[i] + 1}, ${v ? v : n ? "notes " + [1,2,3,4,5,6,7,8,9].filter(d => n & (1 << d)).join(" ") : "empty"}${S.locked[i] && !S.hinted[i] ? ", given" : ""}${wrong ? ", wrong" : ""}`);
       el.tabIndex = i === (sel >= 0 ? sel : 0) ? 0 : -1;
     }
     boardEl.classList.toggle("solved", S.done);
@@ -615,7 +672,10 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
     $("st-penalty").textContent = `+${penalty()}s`;
     $("t-undo").disabled = S.done || S.paused || !S.undo.length;
     $("t-redo").disabled = S.done || S.paused || !S.redo.length;
-    $("t-erase").disabled = !canEdit(sel) || !S.values[sel];
+    $("t-erase").disabled = !canEdit(sel) || (!S.values[sel] && !S.notes[sel]);
+    $("t-notes").setAttribute("aria-pressed", String(!!S.noteMode));
+    $("t-notes").disabled = S.done || S.paused;
+    padEl.classList.toggle("noting", !!S.noteMode);
     $("t-hint").disabled = S.done || S.paused;
     $("sw-check").setAttribute("aria-checked", String(check));
     $("btn-pause").textContent = S.paused ? "Resume" : "Pause";
@@ -778,7 +838,8 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
   $("btn-resume").addEventListener("click", () => pause(false));
   $("t-undo").addEventListener("click", undo);
   $("t-redo").addEventListener("click", redo);
-  $("t-erase").addEventListener("click", () => setCell(S.sel, 0));
+  $("t-erase").addEventListener("click", () => erase(S.sel));
+  $("t-notes").addEventListener("click", () => { S.noteMode = !S.noteMode; persist(); render(); });
   $("t-hint").addEventListener("click", hint);
   $("sw-check").addEventListener("click", () => {
     check = !check; store.set(LS.check, check ? "1" : "0");
@@ -799,8 +860,10 @@ tr.top td.rank { color: var(--pen); font-weight: 500; }
     else if (k === "ArrowDown") { e.preventDefault(); move(1, 0); }
     else if (k === "ArrowLeft") { e.preventDefault(); move(0, -1); }
     else if (k === "ArrowRight") { e.preventDefault(); move(0, 1); }
-    else if (/^[1-9]$/.test(k)) setCell(S.sel, +k);
-    else if (k === "Backspace" || k === "Delete" || k === "0") setCell(S.sel, 0);
+    else if (/^Digit[1-9]$/.test(e.code) && e.shiftKey) toggleNote(S.sel, +e.code.slice(5));
+    else if (/^[1-9]$/.test(k)) input(+k);
+    else if (k === "n" || k === "N") { S.noteMode = !S.noteMode; persist(); render(); }
+    else if (k === "Backspace" || k === "Delete" || k === "0") erase(S.sel);
     else return;
     if (S.sel >= 0 && boardEl.contains(document.activeElement)) cells[S.sel].focus();
   });
