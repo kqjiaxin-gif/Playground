@@ -1,0 +1,22 @@
+{
+  "name": "event-pass",
+  "version": "1.0.0",
+  "description": "Unique QR passes for pair tickets, with multi-door check-in",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:init:local": "wrangler d1 execute event-pass --local --file=schema.sql",
+    "db:init": "wrangler d1 execute event-pass --remote --file=schema.sql",
+    "deploy": "wrangler deploy",
+    "test": "node test/smoke.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^1.4.4"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.17"
+  },
+  "private": true,
+  "type": "module"
+}

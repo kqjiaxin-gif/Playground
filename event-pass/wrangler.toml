@@ -1,0 +1,24 @@
+name = "event-pass"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "event-pass"
+# Paste the id printed by `npx wrangler d1 create event-pass`
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# Secrets (set with `npx wrangler secret put NAME`, never commit them):
+#   ADMIN_PIN       - organiser dashboard
+#   STAFF_PIN       - door scanner
+#   WEBHOOK_SECRET  - your checkout calls the webhook with this
+#
+# Optional: set if you put the worker behind a custom domain, so QR codes use it.
+# [vars]
+# PUBLIC_BASE_URL = "https://tickets.example.com"
+
+# Serve the QR decoder from our own domain (no CDN dependency at the door).
+[[rules]]
+type = "Text"
+globs = ["**/jsQR.js"]
+fallthrough = true

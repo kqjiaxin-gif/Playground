@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development only
+ADMIN_PIN=admin-change-me
+STAFF_PIN=246810
+WEBHOOK_SECRET=local-webhook-secret
