@@ -172,6 +172,7 @@ export function scanPage(s) {
           const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
           canvas.width = Math.round(video.videoWidth * scale);
           canvas.height = Math.round(video.videoHeight * scale);
+          ctx.imageSmoothingQuality = 'high';   // resizing the canvas resets this; smoothing averages sensor noise for jsQR
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
