@@ -2,6 +2,7 @@ import qrcode from 'qrcode-generator';
 import { esc, jsLiteral } from '../lib.js';
 import { layout, icons } from './layout.js';
 import { formatWhen, mapLink, googleCalendarLink } from '../settings.js';
+import { qrModules, PASS_CARD_JS } from './passImage.js';
 
 function qrSvg(text) {
   const qr = qrcode(0, 'M');
@@ -60,25 +61,59 @@ export function ticketPage(s, t, base) {
   ${isVoid ? '' : `
   <section class="actions stack">
     <button class="btn primary block" id="share" type="button">${icons.share}Share pass with my partner</button>
-    <a class="btn block" href="${esc(wa)}" target="_blank" rel="noopener">${icons.whatsapp}Send via WhatsApp</a>
+    <div class="row">
+      <a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${icons.whatsapp}Send link</a>
+      <button class="btn" id="save" type="button">${icons.ticket}Save pass image</button>
+    </div>
     <div class="row">
       ${gcal ? `<a class="btn" href="${esc(gcal)}" target="_blank" rel="noopener">${icons.calendar}Google Cal</a>
                 <a class="btn" href="/t/${esc(t.token)}/event.ics">${icons.calendar}Apple / Outlook</a>` : ''}
     </div>
     ${map ? `<a class="btn block" href="${esc(map)}" target="_blank" rel="noopener">${icons.map}Directions</a>` : ''}
-    <p class="muted small center">Tip: take a screenshot so your pass works even without signal. Both of you can show the same QR. If you arrive separately, each person is checked in once.</p>
+    <p class="muted small center">Share pass sends the QR image and the link together. Save the image so your pass works without signal. Both of you can show the same QR. If you arrive separately, each person is checked in once.</p>
   </section>`}
 </main>
 <script>
+${PASS_CARD_JS}
+(() => {
   const shareBtn = document.getElementById('share');
-  if (shareBtn) shareBtn.addEventListener('click', async () => {
-    const data = { title: ${jsLiteral(s.event_name)}, text: ${jsLiteral(shareText)} };
-    if (navigator.share) {
-      try { await navigator.share(data); } catch (e) {}
-    } else {
-      window.open(${jsLiteral(wa)}, '_blank', 'noopener');
+  if (!shareBtn) return;
+  const pass = ${jsLiteral({
+    modules: qrModules(url), event: s.event_name, when, venue: [s.venue_name, s.venue_address].filter(Boolean).join(', '),
+    names, code: t.code, admits: t.admits, brand: /^#[0-9a-fA-F]{6}$/.test(s.brand_color) ? s.brand_color : '#5b3cc4',
+  })};
+  const shareText = ${jsLiteral(shareText)};
+  const wa = ${jsLiteral(wa)};
+  const filename = 'pass-' + pass.code + '.png';
+  // Build the image up front: iOS only lets share() run straight from the tap.
+  let file = null;
+  (document.fonts ? document.fonts.ready : Promise.resolve())
+    .then(() => drawPassCard(pass))
+    .then((blob) => { file = new File([blob], filename, { type: 'image/png' }); })
+    .catch(() => {});
+
+  shareBtn.addEventListener('click', async () => {
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text: shareText }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
     }
+    if (navigator.share) {
+      try { await navigator.share({ title: pass.event, text: shareText }); } catch (e) {}
+      return;
+    }
+    window.open(wa, '_blank', 'noopener');
   });
+
+  document.getElementById('save').addEventListener('click', async () => {
+    const blob = file || await drawPassCard(pass);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
+})();
 </script>`;
 
   return layout({
